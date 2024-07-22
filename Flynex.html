@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlyNex Drone Breakout - Florian Bahr</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+        }
+        .ui-container {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #FFFFFF;
+            font-size: 18px;
+        }
+        #skillsContainer {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background-color: rgba(255, 255, 255, 0.8);
+            padding: 10px;
+            border-radius: 5px;
+            max-width: 200px;
+            max-height: 80%;
+            overflow-y: auto;
+        }
+        .button-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .button {
+            padding: 10px 20px;
+            background-color: #FFA500;
+            color: #FFFFFF;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .button:hover {
+            background-color: #FF8C00;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas"></canvas>
+    <div class="ui-container">
+        <div>Score: <span id="currentScore">0</span></div>
+        <div>High Score: <span id="highScore">0</span></div>
+    </div>
+    <div id="skillsContainer">
+        <h3>Revealed Skills:</h3>
+        <ul id="skillsList"></ul>
+    </div>
+    <div class="button-container">
+        <button id="contactButton" class="button" onclick="contactFlorian()">Contact Florian</button>
+        <button id="cvButton" class="button" onclick="viewCV()">View CV</button>
+    </div>
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+        const skillsList = document.getElementById("skillsList");
+        const currentScoreElement = document.getElementById("currentScore");
+        const highScoreElement = document.getElementById("highScore");
+
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+
+        const flightZoneWidth = canvas.width / 2;
+        const flightZoneX = (canvas.width - flightZoneWidth) / 2;
+
+        const droneWidth = 80;
+        const droneHeight = 40;
+        let droneX = canvas.width / 2 - droneWidth / 2;
+        let ballX = canvas.width / 2;
+        let ballY = canvas.height - 100;
+        let ballRadius = 8;
+        let initialBallSpeed = 7;
+        let ballSpeedX = initialBallSpeed;
+        let ballSpeedY = -initialBallSpeed;
+
+        const brickRowCount = 6;
+        const brickColumnCount = 8;
+        const brickWidth = (flightZoneWidth - 60) / brickColumnCount;
+        const brickHeight = 20;
+        const brickPadding = 5;
+        const brickOffsetTop = canvas.height / 4;
+        const brickOffsetLeft = flightZoneX + 30;
+
+        const stars = [];
+        const starCount = 200;
+
+        const skills = [
+            "CRM Expert", "AI Integration", "Projektmanagement", "Customer Support",
+            "Digital Transformation", "Data Analysis", "Team Leadership", "Process Optimization",
+            "IT Infrastructure", "Strategic Planning", "B2B Relations", "Innovation",
+            "KI-Integration", "Verlagsmanagement", "Anzeigenleitung", "PR & Marketing",
+            "Prozess-Wikis", "Kanban-Management", "Controlling", "Excel-Nerd",
+            "Künstliche Intelligenz", "Python Grundkenntnisse", "Datenpflege", "Verlässlichkeit", "Engagement", "Improvisation","API-Einbindungen"
+        ];
+        let revealedSkills = [];
+
+        const bricks = [];
+        let totalBricks = brickRowCount * brickColumnCount;
+        let bricksDestroyed = 0;
+        let currentScore = 0;
+        let highScore = localStorage.getItem('highScore') || 0;
+        highScoreElement.textContent = highScore;
+
+        // Distribute skills among bricks
+        const shuffledSkills = skills.sort(() => 0.5 - Math.random());
+        let skillIndex = 0;
+
+        for(let c = 0; c < brickColumnCount; c++) {
+            bricks[c] = [];
+            for(let r = 0; r < brickRowCount; r++) {
+                bricks[c][r] = { 
+                    x: 0, 
+                    y: 0, 
+                    status: 1, 
+                    skill: skillIndex < shuffledSkills.length ? shuffledSkills[skillIndex++] : null
+                };
+            }
+        }
+
+        for(let i = 0; i < starCount; i++) {
+            stars.push({
+                x: Math.random() * canvas.width,
+                y: Math.random() * canvas.height,
+                radius: Math.random() * 2,
+                speed: Math.random() * 0.5
+            });
+        }
+
+        const droneImage = new Image();
+        droneImage.src = 'https://cdn-icons-png.flaticon.com/512/1830/1830867.png';
+
+        let gameOver = false;
+
+        function drawStars() {
+            ctx.fillStyle = "white";
+            stars.forEach(star => {
+                ctx.beginPath();
+                ctx.arc(star.x, star.y, star.radius, 0, Math.PI * 2);
+                ctx.fill();
+                star.y += star.speed;
+                if(star.y > canvas.height) {
+                    star.y = 0;
+                    star.x = Math.random() * canvas.width;
+                }
+            });
+        }
+
+        function drawFlightZone() {
+            ctx.strokeStyle = "#FFFFFF";
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(flightZoneX, 0);
+            ctx.lineTo(flightZoneX, canvas.height);
+            ctx.moveTo(flightZoneX + flightZoneWidth, 0);
+            ctx.lineTo(flightZoneX + flightZoneWidth, canvas.height);
+            ctx.stroke();
+
+            ctx.font = "20px Arial";
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fillText("Flight Zone", canvas.width / 2 - 50, 30);
+        }
+
+        function drawDrone() {
+            if (droneImage.complete) {
+                ctx.drawImage(droneImage, droneX, canvas.height - droneHeight, droneWidth, droneHeight);
+            } else {
+                ctx.fillStyle = "#FFA500";
+                ctx.fillRect(droneX, canvas.height - droneHeight, droneWidth, droneHeight);
+            }
+        }
+
+        function drawBall() {
+            ctx.beginPath();
+            ctx.arc(ballX, ballY, ballRadius, 0, Math.PI * 2);
+            ctx.fillStyle = "#FFFFFF";
+            ctx.fill();
+        }
+
+        function drawBricks() {
+            for(let c = 0; c < brickColumnCount; c++) {
+                for(let r = 0; r < brickRowCount; r++) {
+                    if(bricks[c][r].status == 1) {
+                        const brickX = (c * (brickWidth + brickPadding)) + brickOffsetLeft;
+                        const brickY = (r * (brickHeight + brickPadding)) + brickOffsetTop;
+                        bricks[c][r].x = brickX;
+                        bricks[c][r].y = brickY;
+                        ctx.beginPath();
+                        ctx.rect(brickX, brickY, brickWidth, brickHeight);
+                        ctx.fillStyle = bricks[c][r].skill ? "#FFA500" : "#0095DD";
+                        ctx.fill();
+                        ctx.closePath();
+                    }
+                }
+            }
+        }
+
+        function collisionDetection() {
+            for(let c = 0; c < brickColumnCount; c++) {
+                for(let r = 0; r < brickRowCount; r++) {
+                    const b = bricks[c][r];
+                    if(b.status == 1) {
+                        if(ballX > b.x && ballX < b.x + brickWidth && ballY > b.y && ballY < b.y + brickHeight) {
+                            ballSpeedY = -ballSpeedY;
+                            b.status = 0;
+                            bricksDestroyed++;
+                            currentScore += 10;
+                            currentScoreElement.textContent = currentScore;
+                            if(b.skill) {
+                                revealSkill(b.skill);
+                            }
+                            if(bricksDestroyed % Math.floor(totalBricks * 0.25) === 0) {
+                                increaseSpeed();
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        function revealSkill(skill) {
+            if (!revealedSkills.includes(skill)) {
+                revealedSkills.push(skill);
+                updateSkillsList();
+            }
+        }
+
+        function updateSkillsList() {
+            skillsList.innerHTML = revealedSkills.map(skill => `<li>${skill}</li>`).join('');
+        }
+
+        function increaseSpeed() {
+            const speedIncrease = 1.15;
+            ballSpeedX *= speedIncrease;
+            ballSpeedY *= speedIncrease;
+        }
+
+        function draw() {
+            if (gameOver) return;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = "#1E82B4";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            drawStars();
+            drawFlightZone();
+            drawBricks();
+            drawBall();
+            drawDrone();
+            collisionDetection();
+            
+            if(ballX + ballSpeedX > flightZoneX + flightZoneWidth - ballRadius || ballX + ballSpeedX < flightZoneX + ballRadius) {
+                ballSpeedX = -ballSpeedX;
+            }
+            if(ballY + ballSpeedY < ballRadius) {
+                ballSpeedY = -ballSpeedY;
+            } else if(ballY + ballSpeedY > canvas.height - ballRadius) {
+                if(ballX > droneX && ballX < droneX + droneWidth) {
+                    ballSpeedY = -ballSpeedY;
+                    let hitPos = (ballX - droneX) / droneWidth;
+                    ballSpeedX = 8 * (hitPos - 0.5);
+                } else {
+                    gameOver = true;
+                    if(currentScore > highScore) {
+                        highScore = currentScore;
+                        highScoreElement.textContent = highScore;
+                        localStorage.setItem('highScore', highScore);
+                    }
+                    ctx.font = "30px Arial";
+                    ctx.fillStyle = "#FFFFFF";
+                    ctx.fillText("Game Over - Click to Restart", canvas.width/2 - 150, canvas.height/2);
+                }
+            }
+            
+            ballX += ballSpeedX;
+            ballY += ballSpeedY;
+            
+            requestAnimationFrame(draw);
+        }
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            droneX = e.clientX - rect.left - droneWidth / 2;
+            if(droneX < flightZoneX) droneX = flightZoneX;
+            if(droneX + droneWidth > flightZoneX + flightZoneWidth) droneX = flightZoneX + flightZoneWidth - droneWidth;
+        });
+
+        canvas.addEventListener('click', () => {
+            if (gameOver) {
+                gameOver = false;
+                ballX = canvas.width / 2;
+                ballY = canvas.height - 100;
+                ballSpeedX = initialBallSpeed;
+                ballSpeedY = -initialBallSpeed;
+                bricksDestroyed = 0;
+                currentScore = 0;
+                currentScoreElement.textContent = currentScore;
+                revealedSkills = [];
+                updateSkillsList();
+                for(let c = 0; c < brickColumnCount; c++) {
+                    for(let r = 0; r < brickRowCount; r++) {
+                        bricks[c][r].status = 1;
+                    }
+                }
+                draw();
+            }
+        });
+
+        function contactFlorian() {
+            window.location.href = "mailto:Florian.Bahr@gmx.de?subject=Impressed by your FlyNex Drone Game!";
+        }
+
+        function viewCV() {
+            window.open('https://kaffeemitzimt.github.io/FlorianBahr.github.io/', '_blank');
+        }
+
+        window.addEventListener('resize', () => {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        });
+
+        draw();
+    </script>
+</body>
+</html>
